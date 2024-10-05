@@ -3,7 +3,8 @@ package main
 import (
 	"net/http"
 	"runtime/debug"
-  "github.com/pion/webrtc/v3"
+
+  "github.com/gorilla/websocket"
 )
 
 func (app *application) serverError(w http.ResponseWriter, r *http.Request, err error) {
@@ -25,30 +26,31 @@ func (app *application) clientError(w http.ResponseWriter, status int) {
     http.Error(w, http.StatusText(status), status)
 }
 
-
-// Init peer connections
-func (app *application) createPeerConnection() (*webrtc.PeerConnection, error) {
-  // define ICS servers for NAT traversal
-  iceServers := []webrtc.ICEServer{
-    {
-      URLs: []string{"stun:stun.l.google.com:19302"},
-    },
-  }
-
-  // Create an RTCPeerConnection
-  config := webrtc.Configuration{
-    ICEServers: iceServers,
-  }
-  peerConnection, err := webrtc.NewPeerConnection(config)
+// Send a message to the user on the connection. If there's an error, log it and close the connection.
+func (app *application) sendWsMessage(conn *websocket.Conn, message interface{}) {
+  err := conn.WriteJSON(message)
   if err != nil {
-    return nil, err
+    app.logger.Error("Error sending message to client. Closing their connection", "error", err.Error())
+    conn.Close()
   }
-
-  // Handle ICE connection state changes
-  peerConnection.OnICEConnectionStateChange(func(connectionState webrtc.ICEConnectionState) {
-    app.logger.Info("ICE connection state has changed", "state", connectionState.String())
-  })
-
-  return peerConnection, nil
-
 }
+
+func (app *application) WsError(conn *websocket.Conn, err error) {
+  app.logger.Error("Sending ws error to user", "error", err.Error())
+  app.sendWsMessage(conn, map[string]interface{}{ "error": err.Error() })
+}
+
+
+func (app *application) startNewBroadcaster() {
+	for {
+    // Listen on the channel for any messages and send to all clients
+		msg := <- app.broadcastChannel
+		for _, client := range app.rooms.Map[msg.RoomID] {
+			if client.Conn != msg.Client {
+        app.sendWsMessage(client.Conn, msg.Message)
+			}
+		}
+	}
+}
+
+

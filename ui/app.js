@@ -1,4 +1,11 @@
-document.getElementById('join-btn').addEventListener('click', joinSession);
+// Create a new room flow
+document.getElementById('create-btn').addEventListener('click', showCreateRoomScreen);
+document.getElementById('create-room-btn').addEventListener('click', createRoom);
+
+// Join an existing room flow
+document.getElementById('join-btn').addEventListener('click', showJoinRoomScreen);
+document.getElementById('join-room-btn').addEventListener('click', joinRoom);
+
 document.getElementById('mute-btn').addEventListener('click', toggleMute);
 document.getElementById('video-btn').addEventListener('click', toggleVideo);
 
@@ -9,75 +16,219 @@ let isVideoStopped = false;
 
 let ws;
 
-async function joinSession() {
-    const name = document.getElementById('name').value;
-    if (!name) {
-        alert('Please enter your name');
-        return;
-    }
+async function showCreateRoomScreen() {
+  console.log('Creating room');
+  document.getElementById('welcome-screen').style.display = 'none';
+  document.getElementById('enter-room').style.display = 'block';
+  document.getElementById('create-screen').style.display = 'block';
+}
 
-    document.getElementById('join-screen').style.display = 'none';
-    document.getElementById('participant-view').style.display = 'block';
+async function createRoom() {
+  console.log('Creating new conference room');
+  
+  // Create a new room
+  const resp = await fetch('/create')
+  const { room_id } = await resp.json();
+  console.log('Room created:', room_id);
+  
+  await sendJoinRoom(room_id);
+}
 
-    peerConnection = new RTCPeerConnection({
-        iceServers: [{ urls: 'stun:stun.l.google.com:19302' }]
-    });
-    
-    localStream = await navigator.mediaDevices.getUserMedia({ video: true, audio: true });
-    localStream.getTracks().forEach(track => peerConnection.addTrack(track, localStream));
-
-    const localVideo = document.createElement('video');
-    localVideo.srcObject = localStream;
-    localVideo.autoplay = true;
-    localVideo.muted = true;
-    document.getElementById('videos').appendChild(localVideo);
-
-    ws = new WebSocket(`ws://${window.location.host}/ws`);
-
-    ws.onopen = () => {
-        console.log('Connected to the signaling server');
-        ws.send(JSON.stringify({ type: 'join', name: name }));
-        createOffer();
-    };
-
-    ws.onmessage = async (message) => {
-        const data = JSON.parse(message.data);
-        switch (data.type) {
-            case 'offer':
-                console.log('Received offer');
-                await peerConnection.setRemoteDescription(new RTCSessionDescription(data.offer));
-                const answer = await peerConnection.createAnswer();
-                await peerConnection.setLocalDescription(answer);
-                ws.send(JSON.stringify({ type: 'answer', answer: answer }));
-                break;
-            case 'answer':
-                console.log('Received answer');
-                await peerConnection.setRemoteDescription(new RTCSessionDescription(data.answer));
-                break;
-            case 'candidate':
-                console.log('Received ICE candidate');
-                await peerConnection.addIceCandidate(new RTCIceCandidate(data.candidate));
-                break;
-            default:
-                console.log('Unknown message type');
-                break;
-        }
-    };
-    
-
-    peerConnection.onicecandidate = (event) => {
-        if (event.candidate) {
-            ws.send(JSON.stringify({ type: 'candidate', candidate: event.candidate }));
-        }
-    };
-
-    peerConnection.ontrack = (event) => {
-        console.log('Adding a new stream');
-        addRemoteStream(event.streams[0]);
-    };
+async function showJoinRoomScreen() {
+  console.log('Joining room');
+  document.getElementById('welcome-screen').style.display = 'none';
+  document.getElementById('enter-room').style.display = 'block';
+  document.getElementById('join-screen').style.display = 'block';
 
 }
 
+async function joinRoom() {
+  console.log('Joining room');
+  const roomID = document.getElementById('room-id').value;
+  if (!roomID) {
+    alert('Please enter the room ID');
+    return;
+  }
+
+  await sendJoinRoom(roomID);
+}
+
+async function sendJoinRoom(roomID) {
+  const name = document.getElementById('name').value;
+  if (!name) {
+      alert('Please enter your name');
+      return;
+  }
+  console.log('Joining room:', roomID);
+  ws = new WebSocket(`ws://${window.location.host}/join?roomID=${roomID}`);
+
+  ws.onopen = () => {
+    console.log('Connected to the signaling server');
+    ws.send(JSON.stringify({ type: 'join' }));
+
+    // Show the participant view
+    document.getElementById('enter-room').style.display = 'none';
+    document.getElementById('participant-view').style.display = 'block';
+
+    activateStream();
+  }
+
+  ws.onmessage = async (message) => {
+    const data = JSON.parse(message.data);
+    switch (data.type) {
+      case 'join':
+        // call user
+        callUser();
+        break;
+      case 'offer':
+        // handle offer
+        break;
+      case 'answer':
+        // handle answer
+        break;
+      case 'iceCandidate':
+        // handle ICE
+        break;
+      default:
+        console.log(`Unknown message type: ${JSON.stringify(data)}`); break;
+    }
+  }
+
+}
+
+async function activateStream() {
+  localStream = await navigator.mediaDevices.getUserMedia({ video: true, audio: true });
+  //localStream.getTracks().forEach(track => peerConnection.addTrack(track, localStream));
+
+  const localVideo = document.createElement('video');
+  localVideo.srcObject = localStream;
+  localVideo.autoplay = true;
+  localVideo.muted = true;
+  document.getElementById('videos').appendChild(localVideo);
+}
+
+async function callUser() {
+  console.log("Calling Other User");
+  peerConnection = createPeer();
+  
+  localStream.getTracks().forEach(track => peerConnection.addTrack(track, localStream));
+}
+
+function createPeer() {
+  console.log("Creating Peer Connection");
+  const peer = new RTCPeerConnection({
+      iceServers: [{ urls: "stun:stun.l.google.com:19302" }],
+  });
+
+  peer.onnegotiationneeded = handleNegotiationNeeded;
+  peer.onicecandidate = handleIceCandidateEvent;
+  peer.ontrack = handleTrackEvent;
+
+  return peer;
+}
+
+async function handleNegotiationNeeded() {
+  console.log("Creating Offer");
+
+  try {
+      const myOffer = await peerConnection.createOffer();
+      await peerConnection.setLocalDescription(myOffer);
+
+      await ws.send(
+        JSON.stringify({ type: 'offer', offer: peerRef.current.localDescription })
+      );
+  } catch (err) {}
+}     
+      
+async function handleIceCandidateEvent(e) {
+    console.log("Found Ice Candidate");
+    if (e.candidate) {
+        console.log(e.candidate);
+        await ws.send(
+          JSON.stringify({ type: "iceCandidate",  iceCandidate: e.candidate })
+        );
+    }
+}
+
+
+function handleTrackEvent(e) {
+    console.log("Received Tracks");
+    console.log(e.streams)
+    partnerVideo.srcObject = e.streams[0];
+    addRemoteStream(e.streams[0]);
+}
+
+
+
+//async function joinSession() {
+//    const name = document.getElementById('name').value;
+//    if (!name) {
+//        alert('Please enter your name');
+//        return;
+//    }
+//
+//    document.getElementById('join-screen').style.display = 'none';
+//    document.getElementById('participant-view').style.display = 'block';
+//
+//    peerConnection = new RTCPeerConnection({
+//        iceServers: [{ urls: 'stun:stun.l.google.com:19302' }]
+//    });
+//
+//    localStream = await navigator.mediaDevices.getUserMedia({ video: true, audio: true });
+//    localStream.getTracks().forEach(track => peerConnection.addTrack(track, localStream));
+//
+//    const localVideo = document.createElement('video');
+//    localVideo.srcObject = localStream;
+//    localVideo.autoplay = true;
+//    localVideo.muted = true;
+//    document.getElementById('videos').appendChild(localVideo);
+//
+//    ws = new WebSocket(`ws://${window.location.host}/ws`);
+//
+//    ws.onopen = () => {
+//        console.log('Connected to the signaling server');
+//        ws.send(JSON.stringify({ type: 'join', name: name }));
+//        createOffer();
+//    };
+//
+//    ws.onmessage = async (message) => {
+//        const data = JSON.parse(message.data);
+//        switch (data.type) {
+//            case 'offer':
+//                console.log('Received offer');
+//                await peerConnection.setRemoteDescription(new RTCSessionDescription(data.offer));
+//                const answer = await peerConnection.createAnswer();
+//                await peerConnection.setLocalDescription(answer);
+//                ws.send(JSON.stringify({ type: 'answer', answer: answer }));
+//                break;
+//            case 'answer':
+//                console.log('Received answer');
+//                await peerConnection.setRemoteDescription(new RTCSessionDescription(data.answer));
+//                break;
+//            case 'candidate':
+//                console.log('Received ICE candidate');
+//                await peerConnection.addIceCandidate(new RTCIceCandidate(data.candidate));
+//                break;
+//            default:
+//                console.log('Unknown message type');
+//                break;
+//        }
+//    };
+//
+//
+//    peerConnection.onicecandidate = (event) => {
+//        if (event.candidate) {
+//            ws.send(JSON.stringify({ type: 'candidate', candidate: event.candidate }));
+//        }
+//    };
+//
+//    peerConnection.ontrack = (event) => {
+//        console.log('Adding a new stream');
+//        addRemoteStream(event.streams[0]);
+//    };
+//
+//}
+//
 function toggleMute() {
     localStream.getAudioTracks().forEach(track => track.enabled = !track.enabled);
     isMuted = !isMuted;
@@ -97,18 +248,4 @@ function addRemoteStream(stream) {
     document.getElementById('videos').appendChild(remoteVideo);
 }
 
-async function createOffer() {
-    try {
-        // Create an offer
-        const offer = await peerConnection.createOffer();
-        
-        // Set the local description with the created offer
-        await peerConnection.setLocalDescription(offer);
-        
-        console.log('Offer created:', offer);
-        // Send the offer to the remote peer via the signaling server
-        ws.send(JSON.stringify({ type: 'offer', offer: offer }));
-    } catch (error) {
-        console.error('Error creating offer:', error);
-    }
-}
+

@@ -15,8 +15,10 @@ func (app *application) routes() http.Handler {
   fileserver := http.FileServer(http.Dir("./ui/"))
   mux.Handle("/", http.StripPrefix("", fileserver))
 
-  mux.HandleFunc("/ws", app.handleWebSocket)
+  mux.HandleFunc("/join", app.JoinRoomRequestHandler)
+  mux.HandleFunc("/create", app.CreateRoomRequestHandler)
   
   std := alice.New(app.recoverPanic, app.logRequest)
   return std.Then(mux)
 }
+
