@@ -49,7 +49,6 @@ async function joinRoom() {
     alert('Please enter the room ID');
     return;
   }
-
   await sendJoinRoom(roomID);
 }
 
@@ -60,6 +59,8 @@ async function sendJoinRoom(roomID) {
       return;
   }
   console.log('Joining room:', roomID);
+  await activateStream();
+
   ws = new WebSocket(`ws://${window.location.host}/join?roomID=${roomID}`);
 
   ws.onopen = () => {
@@ -70,7 +71,6 @@ async function sendJoinRoom(roomID) {
     document.getElementById('enter-room').style.display = 'none';
     document.getElementById('participant-view').style.display = 'block';
 
-    activateStream();
   }
 
   ws.onmessage = async (message) => {
@@ -82,12 +82,23 @@ async function sendJoinRoom(roomID) {
         break;
       case 'offer':
         // handle offer
+        handleOffer(data.offer);
         break;
       case 'answer':
         // handle answer
+        console.log("Receiving Answer")
+        peerConnection.setRemoteDescription(
+          new RTCSessionDescription(data.answer)
+        );
         break;
       case 'iceCandidate':
         // handle ICE
+        console.log("Receiving ICE Candidate")
+        try {
+          peerConnection.addIceCandidate(data.iceCandidate);
+        } catch (e) {
+          console.error('Error adding received ice candidate', e);
+        }
         break;
       default:
         console.log(`Unknown message type: ${JSON.stringify(data)}`); break;
@@ -98,7 +109,7 @@ async function sendJoinRoom(roomID) {
 
 async function activateStream() {
   localStream = await navigator.mediaDevices.getUserMedia({ video: true, audio: true });
-  //localStream.getTracks().forEach(track => peerConnection.addTrack(track, localStream));
+  console.log(`Activated Stream: ${JSON.stringify(localStream)}`);
 
   const localVideo = document.createElement('video');
   localVideo.srcObject = localStream;
@@ -106,6 +117,30 @@ async function activateStream() {
   localVideo.muted = true;
   document.getElementById('videos').appendChild(localVideo);
 }
+
+async function handleOffer(offer) {
+    console.log("Received Offer, Creating Answer");
+    peerConnection = createPeer();
+    
+    // Set the recieved offer as the remote description
+    peerConnection.setRemoteDescription(
+        new RTCSessionDescription(offer)
+    );
+
+    // Add data to the local description
+    console.log(`Adding Answer tracks: ${JSON.stringify(localStream)}`);
+    localStream.getTracks().forEach(track => peerConnection.addTrack(track, localStream));
+
+    const answer = await peerConnection.createAnswer();
+    console.log(`Created Answer: ${JSON.stringify(answer)}`);
+    await peerConnection.setLocalDescription(answer);
+    console.log(`Set Local Description: ${JSON.stringify(peerConnection.localDescription)}`);
+
+    ws.send(
+      JSON.stringify({ type: "answer", answer: peerConnection.localDescription })
+    );
+};
+
 
 async function callUser() {
   console.log("Calling Other User");
@@ -135,16 +170,18 @@ async function handleNegotiationNeeded() {
       await peerConnection.setLocalDescription(myOffer);
 
       await ws.send(
-        JSON.stringify({ type: 'offer', offer: peerRef.current.localDescription })
+        JSON.stringify({ type: 'offer', offer: peerConnection.localDescription })
       );
-  } catch (err) {}
+  } catch (err) {
+    console.error('Error creating offer', err);
+  }
 }     
       
 async function handleIceCandidateEvent(e) {
     console.log("Found Ice Candidate");
     if (e.candidate) {
         console.log(e.candidate);
-        await ws.send(
+        ws.send(
           JSON.stringify({ type: "iceCandidate",  iceCandidate: e.candidate })
         );
     }
@@ -154,7 +191,7 @@ async function handleIceCandidateEvent(e) {
 function handleTrackEvent(e) {
     console.log("Received Tracks");
     console.log(e.streams)
-    partnerVideo.srcObject = e.streams[0];
+    //partnerVideo.srcObject = e.streams[0];
     addRemoteStream(e.streams[0]);
 }
 

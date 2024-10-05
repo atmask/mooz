@@ -41,7 +41,10 @@ func (app *application) JoinRoomRequestHandler(w http.ResponseWriter, r *http.Re
     return
 	}
 
-	app.rooms.InsertIntoRoom(roomID[0], false, ws)
+  // Create a new participant and add them to the room
+  participant := &models.Participant{Conn: ws, Host: false}
+
+	app.rooms.InsertIntoRoom(roomID[0], participant)
 
 	go app.startNewBroadcaster()
 
@@ -51,7 +54,7 @@ func (app *application) JoinRoomRequestHandler(w http.ResponseWriter, r *http.Re
 		err := ws.ReadJSON(&msg.Message)
 		if err != nil {
 			app.logger.Error("Read Error:", "error", err.Error())
-      app.WsError(ws, err)
+      // app.WsError(ws, err)
       return
 		}
 

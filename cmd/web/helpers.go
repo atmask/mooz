@@ -47,7 +47,10 @@ func (app *application) startNewBroadcaster() {
 		msg := <- app.broadcastChannel
 		for _, client := range app.rooms.Map[msg.RoomID] {
 			if client.Conn != msg.Client {
-        app.sendWsMessage(client.Conn, msg.Message)
+        err := client.SendJSON(msg.Message)
+        if err != nil {
+          client.Close()
+        }
 			}
 		}
 	}
