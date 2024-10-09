@@ -61,7 +61,9 @@ async function sendJoinRoom(roomID) {
   console.log('Joining room:', roomID);
   await activateStream();
 
-  ws = new WebSocket(`ws://${window.location.host}/join?roomID=${roomID}`);
+  protocol = window.location.protocol === 'https:' ? 'wss' : 'ws';
+
+  ws = new WebSocket(`${protocol}://${window.location.host}/join?roomID=${roomID}`);
 
   ws.onopen = () => {
     console.log('Connected to the signaling server');
