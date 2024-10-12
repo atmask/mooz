@@ -61,7 +61,7 @@ async function sendJoinRoom(roomID) {
   console.log('Joining room:', roomID);
   await activateStream();
 
-  protocol = window.location.protocol === 'https:' ? 'wss' : 'ws';
+  const protocol = window.location.protocol === 'https:' ? 'wss' : 'ws';
 
   ws = new WebSocket(`${protocol}://${window.location.host}/join?roomID=${roomID}`);
 

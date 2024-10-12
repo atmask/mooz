@@ -45,8 +45,10 @@ func (app *application) startNewBroadcaster() {
 	for {
     // Listen on the channel for any messages and send to all clients
 		msg := <- app.broadcastChannel
+    app.logger.Debug("Broadcasting message to all clients in room", "roomID", msg.RoomID, "message", msg.Message)
 		for _, client := range app.rooms.Map[msg.RoomID] {
 			if client.Conn != msg.Client {
+        app.logger.Debug("Sending message to client")
         err := client.SendJSON(msg.Message)
         if err != nil {
           client.Close()
