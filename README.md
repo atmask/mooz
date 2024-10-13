@@ -1,5 +1,9 @@
 # Mooz
 
+
+https://github.com/user-attachments/assets/67cd75fb-bd6b-49c3-9f56-ed06a3241bc5
+
+
 Mooz is a simple Web conferencing app that leverages WebRTC. It consists of a Go backend that acts as my singaling server
 and simple HTLM/CSS/JS frontend that uses WebRTC to establish a peer-to-peer connection between two clients.
 
