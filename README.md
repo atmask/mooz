@@ -1,5 +1,7 @@
 # Mooz
 
+![Mooz Demo](./docs/res/mooz.mov)
+
 Mooz is a simple Web conferencing app that leverages WebRTC. It consists of a Go backend that acts as my singaling server
 and simple HTLM/CSS/JS frontend that uses WebRTC to establish a peer-to-peer connection between two clients.
 
